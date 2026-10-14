@@ -7,7 +7,7 @@
   tombstone { id, del:true, u } so deletions sync too. The newest u wins when two devices disagree.
 */
 const LS_KEY = 'fitlog.v1';
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const KINDS = ['lifts', 'food', 'body', 'customFoods'];
 
 function freshState() {
