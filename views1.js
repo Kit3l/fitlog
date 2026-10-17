@@ -1,6 +1,6 @@
 'use strict';
 /* Shared UI pieces, the Today screen and the Lifts screen. */
-const ui = { date: today(), sess: {} };
+const ui = { date: today() };
 const MEALS = ['Pre-workout', 'Post-workout', 'Breakfast', 'Lunch', 'Dinner', 'Evening', 'Snack'];
 
 function defaultMeal() {
@@ -81,7 +81,7 @@ function tally(eaten, target) {
 /* ---------- Today ---------- */
 function viewToday(root) {
   const rec = cur(), p = rec.profile, d = today();
-  const day = programDay(rec, d), tg = targetsFor(rec, d), tot = dayTotals(rec, d);
+  const day = selectedDay(rec, d), tg = targetsFor(rec, d), tot = dayTotals(rec, d);
   const left = tg.kcal - tot.k;
   root.append(pageHead(p.name, prettyDate(d) + ', ' + day.name, syncBadge()));
 
@@ -224,12 +224,15 @@ function exerciseCard(rec, date, day, ex, onSummary) {
 
 function viewLifts(root) {
   const rec = cur(), date = ui.date, days = rec.profile.program.days;
-  const dow = ui.sess[date] != null ? ui.sess[date] : dowOf(date);
-  const day = days.find(d => d.dow === dow) || programDay(rec, date);
+  const day = selectedDay(rec, date), dow = day.dow;
   root.append(pageHead('Lifts', null, syncBadge()), dateNav(render));
-  const sel = h('select', { class: 'in', 'aria-label': 'Session', onchange: e => { ui.sess[date] = Number(e.target.value); render(); } },
-    days.map(d => h('option', { value: String(d.dow), selected: d.dow === dow }, DAYS[d.dow] + ': ' + d.name)));
+  const opt = d => h('option', { value: String(d.dow), selected: d.dow === dow }, dayShort(d.dow) + ': ' + d.name);
+  const week = days.filter(d => !isExtra(d.dow)), extra = days.filter(d => isExtra(d.dow));
+  const sel = h('select', { class: 'in', 'aria-label': 'Session', onchange: e => { pickSession(date, Number(e.target.value)); render(); } },
+    week.map(opt),
+    extra.length ? h('optgroup', { label: 'Extra sessions (no gym)' }, extra.map(opt)) : null);
   root.append(h('label', { class: 'field' }, h('span', null, 'Session'), sel));
+  if (isExtra(dow)) root.append(h('p', { class: 'hint' }, 'Extra session. Today counts as a training day for calories. Rotate A, B, C, D in order.'));
 
   const summary = h('p', { class: 'summary' });
   const updateSummary = () => {

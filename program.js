@@ -63,4 +63,61 @@
       { dow: 6, name: 'Rest day', kind: 'light', exercises: [] }
     ]
   };
+
+  /*
+    Field sessions, for trips with no gym: bands, bodyweight and a guesthouse room.
+    They have a negative dow, so they never belong to a weekday and never load on their own.
+    Pick one from the Session list on the Lifts screen and rotate A, B, C, D in order.
+    Band work has no kilograms, so inc is 0: the app then nudges you on reps and tempo
+    instead of weight. Log the band level in the kg box if you like (1 light, 2 medium, 3 heavy).
+    Each session ends with the 10-exercise circuit, 30 seconds on and 30 seconds off,
+    2 to 3 rounds, which takes the session to about an hour.
+  */
+  const B = (name, sets, reps) => ({ name, type: 'weight', group: 'upper', sets, reps, inc: 0 });
+  const L = (name, sets, reps) => ({ name, type: 'weight', group: 'lower', sets, reps, inc: 0 });
+  const CIRCUIT = () => ({ name: 'Bodyweight circuit (minutes, rounds)', type: 'cardio', group: 'cardio', sets: 1, reps: '20' });
+
+  window.FIELD_SESSIONS = [
+    { dow: -1, name: 'Field A: lower, posterior', kind: 'gym', exercises: [
+      L('Single-leg hip thrust, shoulders on bed (each leg)', 4, '10-15'),
+      L('Band Romanian deadlift', 4, '15-20'),
+      L('Band lying leg curl (each leg)', 3, '15-20'),
+      L('Band good morning', 3, '15-20'),
+      L('Single-leg calf raise on a step (each leg)', 4, '15-25'),
+      { name: 'Plank', type: 'time', group: 'core', sets: 3, reps: '45-60' },
+      B('Band curl', 3, '15-20'),
+      CIRCUIT()
+    ]},
+    { dow: -2, name: 'Field B: upper, back focus', kind: 'gym', exercises: [
+      B('Band lat pulldown, high anchor', 4, '12-20'),
+      B('Band bent-over row', 4, '12-20'),
+      B('Inverted row under a table', 3, '8-15'),
+      B('Band pull-apart', 3, '20-25'),
+      B('Push-up', 3, '10-20'),
+      B('Band chest press', 3, '12-20'),
+      B('Band overhead triceps extension', 3, '15-20'),
+      CIRCUIT()
+    ]},
+    { dow: -3, name: 'Field C: lower, quad focus', kind: 'gym', exercises: [
+      L('Bulgarian split squat, rear foot on a chair (each leg)', 4, '10-15'),
+      L('Band squat', 4, '15-20'),
+      L('Reverse lunge (each leg)', 3, '12-15'),
+      L('Step-up onto a chair (each leg)', 3, '12-15'),
+      { name: 'Wall sit', type: 'time', group: 'lower', sets: 3, reps: '45-60' },
+      L('Standing calf raise, slow', 3, '20-25'),
+      { name: 'Lying leg raise', type: 'weight', group: 'core', sets: 3, reps: '12-20', inc: 0 },
+      CIRCUIT()
+    ]},
+    { dow: -4, name: 'Field D: upper, chest focus', kind: 'gym', exercises: [
+      B('Feet-elevated push-up', 4, '8-15'),
+      B('Band chest press', 4, '12-20'),
+      B('Band fly', 3, '15-20'),
+      B('Band bent-over row', 3, '15-20'),
+      B('Band lat pulldown, high anchor', 3, '15-20'),
+      B('Band overhead press', 3, '12-15'),
+      B('Band triceps pressdown', 3, '15-20'),
+      CIRCUIT()
+    ]}
+  ];
+  window.DEFAULT_PROGRAM.days = window.DEFAULT_PROGRAM.days.concat(window.FIELD_SESSIONS);
 })();

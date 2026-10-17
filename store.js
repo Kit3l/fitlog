@@ -7,11 +7,11 @@
   tombstone { id, del:true, u } so deletions sync too. The newest u wins when two devices disagree.
 */
 const LS_KEY = 'fitlog.v1';
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const KINDS = ['lifts', 'food', 'body', 'customFoods'];
 
 function freshState() {
-  return { v: 1, sync: { owner: '', repo: '', token: '', branch: '' }, currentId: null, profiles: {}, lastSync: null, qty: {} };
+  return { v: 1, sync: { owner: '', repo: '', token: '', branch: '' }, currentId: null, profiles: {}, lastSync: null, qty: {}, sess: {} };
 }
 function loadState() {
   try {
@@ -89,9 +89,32 @@ function programDay(rec, date) {
   const days = rec.profile.program.days;
   return days.find(d => d.dow === dowOf(date)) || { dow: dowOf(date), name: 'Free day', kind: 'light', exercises: [] };
 }
+/* The session showing on the Lifts screen: a hand-picked one if there is one, else the weekday's.
+   Picks are kept per date on this device only, so calories follow the session actually trained. */
+function pickedDow(date) { const v = S.sess && S.sess[date]; return v == null ? null : v; }
+function pickSession(date, dow) {
+  S.sess = S.sess || {};
+  if (dow == null) delete S.sess[date]; else S.sess[date] = dow;
+  const keys = Object.keys(S.sess);
+  if (keys.length > 120) keys.sort().slice(0, keys.length - 120).forEach(k => delete S.sess[k]);
+  saveSoon();
+}
+function selectedDay(rec, date) {
+  const dow = pickedDow(date);
+  if (dow != null) { const d = rec.profile.program.days.find(x => x.dow === dow); if (d) return d; }
+  return programDay(rec, date);
+}
 function targetsFor(rec, date) {
-  const day = programDay(rec, date), t = rec.profile.targets;
+  const day = selectedDay(rec, date), t = rec.profile.targets;
   return { kcal: day.kind === 'gym' ? t.gym : t.light, protein: t.protein, kind: day.kind };
+}
+/* Adds the field sessions to a profile made before they existed. Returns how many were added. */
+function addFieldSessions() {
+  const prog = clone(cur().profile.program);
+  const have = new Set(prog.days.map(d => d.dow));
+  const add = clone(window.FIELD_SESSIONS).filter(d => !have.has(d.dow));
+  if (add.length) { prog.days = prog.days.concat(add); saveProfile({ program: prog }); }
+  return add.length;
 }
 function dayTotals(rec, date) {
   const tot = { k: 0, p: 0, c: 0, f: 0, n: 0 };

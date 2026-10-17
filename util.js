@@ -28,6 +28,10 @@ const $ = (s, r) => (r || document).querySelector(s);
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/* Sessions with a negative dow are extras: they never belong to a weekday and are picked by hand. */
+const isExtra = dow => dow < 0;
+const dayShort = dow => dow < 0 ? 'Extra' : DAYS[dow];
+const dayLong = dow => dow < 0 ? 'Extra session' : DAYS_LONG[dow];
 const pad = n => String(n).padStart(2, '0');
 const dstr = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 const today = () => dstr(new Date());
