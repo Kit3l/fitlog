@@ -76,8 +76,30 @@ const ICONS = {
   check: '<path d="M5 12.5 10 17.5 19 7"/>',
   left: '<path d="M15 5l-7 7 7 7"/>',
   right: '<path d="M9 5l7 7-7 7"/>',
-  cloud: '<path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 9a4.5 4.5 0 0 1 .5 9z"/>'
+  cloud: '<path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 9a4.5 4.5 0 0 1 .5 9z"/>',
+  scale: '<path d="M4 19l5-7 4 3 6.5-9"/><path d="M19.5 6H15"/>',
+  steps: '<rect x="4" y="3" width="6" height="9" rx="3"/><path d="M4.6 13.5h4.8"/><rect x="14" y="9" width="6" height="9" rx="3"/><path d="M14.6 19.5h4.8"/>',
+  run: '<circle cx="15" cy="5" r="2"/><path d="M9 20l2-5 3-2-1-4-4 2-1 3"/><path d="M14 13l3 3 1 4"/>',
+  tape: '<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 7v3M11 7v4M15 7v3M19 7v4"/>',
+  play: '<path d="M6 4l13 8-13 8z"/>'
 };
+/* SVG needs its own namespace, so h() cannot build it. */
+function sv(tag, attrs, ...kids) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  if (attrs) for (const [k, v] of Object.entries(attrs)) { if (v == null || v === false) continue; el.setAttribute(k, v === true ? '' : v); }
+  for (const kid of kids.flat(Infinity)) if (kid != null && kid !== false) el.append(kid);
+  return el;
+}
+/* A progress donut. frac 0-1, clamped; over marks the ring as past target. */
+function ring(frac, opts) {
+  const o = opts || {}, size = o.size || 224, box = 200, w = o.width || 17;
+  const r = (box - w) / 2 - 2, c = 2 * Math.PI * r;
+  const f = Math.max(0, Math.min(1, frac || 0));
+  return sv('svg', { viewBox: '0 0 ' + box + ' ' + box, width: size, height: size, class: 'ring' + (o.over ? ' over' : ''), role: 'img', 'aria-label': o.label || '' },
+    sv('circle', { cx: box / 2, cy: box / 2, r, fill: 'none', class: 'ring-track', 'stroke-width': w }),
+    sv('circle', { cx: box / 2, cy: box / 2, r, fill: 'none', class: 'ring-fill', 'stroke-width': w, 'stroke-linecap': 'round',
+      'stroke-dasharray': c.toFixed(1), 'stroke-dashoffset': (c * (1 - f)).toFixed(1), transform: 'rotate(-90 ' + box / 2 + ' ' + box / 2 + ')' }));
+}
 function icon(name, size) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   s.setAttribute('viewBox', '0 0 24 24');
