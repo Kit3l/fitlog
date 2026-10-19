@@ -7,7 +7,7 @@
   tombstone { id, del:true, u } so deletions sync too. The newest u wins when two devices disagree.
 */
 const LS_KEY = 'fitlog.v1';
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 const KINDS = ['lifts', 'food', 'body', 'customFoods'];
 
 function freshState() {
@@ -154,12 +154,62 @@ function weeklyRate(rec) { // kg per week, regression over the last 14 days
 
 /* ---------- lifts ---------- */
 const liftId = (date, ex) => date + '|' + ex;
+/* Exercise history is matched on this key, so "Leg Extension", "Leg extension" and
+   "leg  extension" are one exercise. The spelling you typed is still what you see. */
+const exKey = n => String(n == null ? '' : n).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+/* The entry for one exercise on one day, whatever spelling it was saved under. */
+function liftOn(rec, date, name) {
+  const direct = rec.lifts[liftId(date, name)];
+  if (direct && !direct.del) return direct;
+  const k = exKey(name);
+  if (!k) return null;
+  for (const e of live('lifts', rec)) if (e.date === date && exKey(e.ex) === k) return e;
+  return null;
+}
+/* Every exercise name in the history, newest use first, with how often it appears. */
+function exerciseNames(rec) {
+  const map = new Map();
+  for (const e of live('lifts', rec)) {
+    const k = exKey(e.ex);
+    if (!k) continue;
+    const cur = map.get(k);
+    if (!cur) map.set(k, { key: k, name: e.ex, last: e.date, count: 1, spellings: new Set([e.ex]) });
+    else {
+      cur.count++;
+      cur.spellings.add(e.ex);
+      if (e.date > cur.last) { cur.last = e.date; cur.name = e.ex; }
+    }
+  }
+  return [...map.values()].sort((a, b) => b.last.localeCompare(a.last));
+}
+/* Renames every entry of one exercise. Entries that then share a day are folded into one. */
+function renameExercise(rec, fromKey, toName) {
+  rec = rec || cur();
+  const to = String(toName).trim();
+  if (!to) return 0;
+  const toK = exKey(to), byDate = new Map();
+  let n = 0;
+  for (const e of live('lifts', rec)) if (exKey(e.ex) === toK && exKey(e.ex) !== fromKey) byDate.set(e.date, e);
+  for (const e of live('lifts', rec).filter(x => exKey(x.ex) === fromKey)) {
+    const twin = byDate.get(e.date);
+    if (twin && twin.id !== e.id) {
+      put('lifts', Object.assign({}, twin, { ex: to, sets: twin.sets.concat(e.sets) }), rec);
+      del('lifts', e.id, rec);
+    } else {
+      put('lifts', Object.assign({}, e, { ex: to }), rec);
+      byDate.set(e.date, e);
+    }
+    n++;
+  }
+  return n;
+}
 function repTop(reps) { const m = String(reps).match(/(\d+(?:\.\d+)?)\s*$/); return m ? parseFloat(m[1]) : null; }
 function repLow(reps) { const m = String(reps).match(/^\s*(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : null; }
 function lastLift(rec, ex, beforeDate) {
+  const k = exKey(ex);
   let best = null;
   for (const e of live('lifts', rec)) {
-    if (e.ex !== ex || e.date >= beforeDate) continue;
+    if (exKey(e.ex) !== k || e.date >= beforeDate) continue;
     if (!best || e.date > best.date) best = e;
   }
   return best;

@@ -1,7 +1,7 @@
 /* FitLog service worker: keeps the app working offline.
    Strategy: serve the cached copy immediately and refresh it in the background,
    so an update is picked up the next time the app is opened. Bump CACHE to force a clean slate. */
-const CACHE = 'fitlog-v1.3.0';
+const CACHE = 'fitlog-v1.4.0';
 const FILES = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'foods.js', 'program.js',
