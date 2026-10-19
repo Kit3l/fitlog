@@ -21,7 +21,7 @@ function render() {
     if (name !== 'welcome' && name !== 'profiles') view = activeProfiles().length ? 'profiles' : 'welcome';
   } else if (cur().profile.pinHash && !unlocked.has(S.currentId) && name !== 'profiles' && name !== 'welcome') {
     view = 'lock'; showNav = false;
-  } else if (!TABS.some(t => t[0] === name) && !['program', 'profiles', 'welcome'].includes(name)) view = 'today';
+  } else if (!TABS.some(t => t[0] === name) && !['program', 'exnames', 'profiles', 'welcome'].includes(name)) view = 'today';
   if (view === 'profiles' || view === 'welcome') showNav = false;
 
   const keepScroll = lastRoute === key;
@@ -35,12 +35,13 @@ function render() {
     case 'progress': viewProgress(root); break;
     case 'settings': viewSettings(root); break;
     case 'program': rest[0] != null && rest[0] !== '' ? viewProgramDay(root, Number(rest[0])) : viewProgramList(root); break;
+    case 'exnames': viewExNames(root); break;
     case 'profiles': viewProfiles(root); break;
     case 'lock': viewLock(root); break;
     default: viewWelcome(root);
   }
   nav.hidden = !showNav;
-  nav.replaceChildren(...TABS.map(([id, label, ic]) => h('a', { href: '#/' + id, class: (view === id || (view === 'program' && id === 'settings')) ? 'on' : '', 'aria-current': view === id ? 'page' : null }, icon(ic), h('span', null, label))));
+  nav.replaceChildren(...TABS.map(([id, label, ic]) => h('a', { href: '#/' + id, class: (view === id || ((view === 'program' || view === 'exnames') && id === 'settings')) ? 'on' : '', 'aria-current': view === id ? 'page' : null }, icon(ic), h('span', null, label))));
   document.body.classList.toggle('has-nav', showNav);
   window.scrollTo(0, keepScroll ? y : 0);
   lastRoute = key;

@@ -1,6 +1,6 @@
 'use strict';
 /* Shared UI pieces, the Today screen and the Lifts screen. */
-const ui = { date: today(), sess: {} };
+const ui = { date: today() };
 const MEALS = ['Pre-workout', 'Post-workout', 'Breakfast', 'Lunch', 'Dinner', 'Evening', 'Snack'];
 
 function defaultMeal() {
@@ -79,95 +79,131 @@ function tally(eaten, target) {
 }
 
 /* ---------- Today ---------- */
-function viewToday(root) {
-  const rec = cur(), p = rec.profile, d = today();
-  const day = programDay(rec, d), tg = targetsFor(rec, d), tot = dayTotals(rec, d);
-  const left = tg.kcal - tot.k;
-  root.append(pageHead(p.name, prettyDate(d) + ', ' + day.name, syncBadge()));
-
-  root.append(h('section', { class: 'energy' },
-    h('div', { class: 'big' },
-      h('span', { class: 'num' + (left < 0 ? ' bad' : '') }, fmt(Math.abs(left))),
-      h('span', { class: 'unit' }, left >= 0 ? 'kcal left' : 'kcal over')),
-    tally(tot.k, tg.kcal),
-    h('p', { class: 'meta' }, 'Eaten ' + fmt(tot.k) + ' of ' + fmt(tg.kcal) + ' on a ' + (tg.kind === 'gym' ? 'training' : 'light') + ' day'),
-    h('div', { class: 'stat-row' },
-      h('div', { class: 'grow' }, h('b', null, fmt(tot.p) + ' g'), ' protein of ' + fmt(tg.protein), bar(tot.p, tg.protein)),
-      h('div', null, h('b', null, fmt(tot.c) + ' g'), ' carbs'),
-      h('div', null, h('b', null, fmt(tot.f) + ' g'), ' fat')),
-    h('button', { class: 'btn primary wide', onclick: () => { ui.date = d; location.hash = '#/food'; } }, 'Log food')));
-
-  // Session
-  const logged = day.exercises.filter(ex => { const e = rec.lifts[liftId(d, ex.name)]; return e && !e.del && e.sets.some(s => s.r != null); }).length;
-  root.append(h('section', { class: 'block' },
-    h('h2', null, day.name),
-    day.exercises.length
-      ? h('p', { class: 'meta' }, logged + ' of ' + day.exercises.length + ' exercises logged')
-      : h('p', { class: 'meta' }, 'No session planned. A walk still counts.'),
-    day.exercises.length ? h('button', { class: 'btn wide', onclick: () => { ui.date = d; location.hash = '#/lifts'; } }, logged ? 'Continue session' : 'Start session') : null));
-
-  // Weigh-in
-  const be = rec.body[d] && !rec.body[d].del ? rec.body[d] : {};
-  const wIn = h('input', { class: 'in', type: 'number', inputmode: 'decimal', step: 'any', value: be.w != null ? r1(be.w) : '', placeholder: 'kg', 'aria-label': 'Weight in kilograms' });
-  const waIn = h('input', { class: 'in', type: 'number', inputmode: 'decimal', step: 'any', value: be.waist != null ? r1(be.waist) : '', placeholder: 'cm', 'aria-label': 'Waist in centimetres' });
-  const stIn = h('input', { class: 'in', type: 'number', inputmode: 'numeric', value: be.steps ?? '', placeholder: 'steps', 'aria-label': 'Steps today' });
-  root.append(h('section', { class: 'block' },
-    h('h2', null, 'Body today'),
-    h('div', { class: 'grid3' },
-      h('label', null, h('span', null, 'Weight'), wIn),
-      h('label', null, h('span', null, 'Waist'), waIn),
-      h('label', null, h('span', null, 'Steps'), stIn)),
-    h('p', { class: 'hint' }, 'Weigh after the toilet and before food. Measure the waist at the navel.'),
-    h('button', { class: 'btn wide', onclick: () => {
+/* Weight, waist and steps moved off the home screen into a sheet, so the page stays readable. */
+function bodySheet(date, after) {
+  const rec = cur(), be = rec.body[date] && !rec.body[date].del ? rec.body[date] : {};
+  sheet('Body today', (body, close) => {
+    const field = (label, val, ph, mode, hint) => {
+      const inp = h('input', { class: 'in', type: 'number', inputmode: mode, step: 'any', value: val ?? '', placeholder: ph, 'aria-label': label });
+      body.append(h('label', { class: 'field' }, h('span', null, label), inp, hint ? h('small', { class: 'hint' }, hint) : null));
+      return inp;
+    };
+    const wIn = field('Weight', be.w != null ? r1(be.w) : '', 'kg', 'decimal', 'After the toilet, before food.');
+    const waIn = field('Waist', be.waist != null ? r1(be.waist) : '', 'cm', 'decimal', 'At the navel, relaxed.');
+    const stIn = field('Steps', be.steps ?? '', 'steps', 'numeric');
+    body.append(h('button', { class: 'btn primary wide', onclick: () => {
       const w = num(wIn.value), waist = num(waIn.value), steps = num(stIn.value);
       if (w == null && waist == null && steps == null) { toast('Enter at least one value', 'bad'); return; }
-      put('body', Object.assign({}, be, { id: d, date: d, w, waist, steps }));
-      toast('Saved'); render();
-    } }, 'Save')));
+      put('body', Object.assign({}, be, { id: date, date, w, waist, steps }));
+      toast('Saved'); close(); after();
+    } }, 'Save'));
+    setTimeout(() => wIn.focus(), 50);
+  });
+}
+
+/* One square on the home grid. onTap makes the whole square a button. */
+function tile(ic, label, value, unit, note, noteCls, onTap) {
+  const inner = [
+    h('span', { class: 'tile-ic ' + ic }, icon(ic, 18)),
+    h('b', { class: 'tile-val' }, value, unit ? h('span', { class: 'tile-unit' }, unit) : null),
+    h('span', { class: 'tile-label' }, label),
+    note ? h('span', { class: 'tile-note ' + (noteCls || '') }, note) : null
+  ];
+  return onTap ? h('button', { class: 'tile', type: 'button', onclick: onTap }, ...inner) : h('div', { class: 'tile' }, ...inner);
+}
+
+function viewToday(root) {
+  const rec = cur(), p = rec.profile, d = today();
+  const day = selectedDay(rec, d), tg = targetsFor(rec, d), tot = dayTotals(rec, d);
+  const left = tg.kcal - tot.k, over = left < 0;
+  const goFood = () => { ui.date = d; location.hash = '#/food'; };
+  const goLifts = () => { ui.date = d; location.hash = '#/lifts'; };
+
+  root.append(h('header', { class: 'home-head' },
+    h('div', null,
+      h('p', { class: 'eyebrow' }, p.name + ' · ' + prettyDate(d)),
+      h('h1', null, day.name)),
+    syncBadge()));
+
+  // Calorie ring
+  root.append(h('section', { class: 'hero' },
+    h('div', { class: 'hero-ring' },
+      ring(tot.k / (tg.kcal || 1), { size: 224, over, label: fmt(tot.k) + ' of ' + fmt(tg.kcal) + ' kilocalories eaten' }),
+      h('div', { class: 'hero-mid' },
+        h('span', { class: 'hero-cap' }, over ? 'OVER TODAY' : 'LEFT TODAY'),
+        h('span', { class: 'hero-num' + (over ? ' bad' : '') }, fmt(Math.abs(left))),
+        h('span', { class: 'hero-sub' }, fmt(tot.k) + ' of ' + fmt(tg.kcal) + ' kcal'))),
+    h('div', { class: 'pro' },
+      h('div', { class: 'pro-top' }, h('b', null, 'Protein'), h('span', null, fmt(tot.p) + ' of ' + fmt(tg.protein) + ' g')),
+      bar(tot.p, tg.protein, 'protein'),
+      h('p', { class: 'meta' }, fmt(tot.c) + ' g carbs · ' + fmt(tot.f) + ' g fat · ' + (tg.kind === 'gym' ? 'training' : 'light') + ' day'))));
+
+  // Four tiles
+  const logged = day.exercises.filter(ex => { const e = liftOn(rec, d, ex.name); return e && e.sets.some(s => s.r != null); }).length;
+  const cw = currentWeight(rec);
+  const be = rec.body[d] && !rec.body[d].del ? rec.body[d] : {};
+  const openBody = () => bodySheet(d, render);
+  const tiles = [];
+
+  tiles.push(day.exercises.length
+    ? tile('lifts', 'Exercises logged', logged, ' of ' + day.exercises.length, logged >= day.exercises.length ? 'Session done' : null, 'good', goLifts)
+    : tile('lifts', 'No session planned', '—', '', 'A walk still counts', '', goLifts));
+
+  const drop = cw && p.startWeight ? p.startWeight - cw.avg : null;
+  tiles.push(tile('scale', cw ? '7-day average' : 'Weight', cw ? fmt(cw.avg, 1) : '—', cw ? ' kg' : '',
+    drop != null && Math.abs(drop) >= 0.05 ? (drop > 0 ? '↓ ' : '↑ ') + fmt(Math.abs(drop), 1) + ' kg' : 'Tap to add',
+    drop > 0 ? 'good' : '', openBody));
+
+  tiles.push(tile('steps', 'Steps today', be.steps != null ? fmt(be.steps) : '—', '', be.steps == null ? 'Tap to add' : null, '', openBody));
+
+  const hasRun = p.program.days.some(x => x.exercises.some(e => e.type === 'run'));
+  if (hasRun) {
+    const km = weekRunKm(rec, d);
+    tiles.push(tile('run', 'Run this week', fmt(km, 1), p.runCap ? ' / ' + fmt(p.runCap, 1) + ' km' : ' km',
+      p.runCap && km >= p.runCap ? 'Cap reached' : null, '', goLifts));
+  } else {
+    tiles.push(tile('tape', 'Waist', be.waist != null ? fmt(be.waist, 1) : '—', be.waist != null ? ' cm' : '',
+      be.waist == null ? 'Tap to add' : null, '', openBody));
+  }
+  root.append(h('div', { class: 'tiles' }, ...tiles));
 
   // Goal
-  const cw = currentWeight(rec);
   if (p.goalWeight && cw) {
     const start = p.startWeight || cw.avg, span = start - p.goalWeight;
     const prog = span ? (start - cw.avg) / span : 0;
     const rate = weeklyRate(rec);
     const daysLeft = p.goalDate ? diffDays(p.goalDate, d) : null;
     const need = daysLeft > 0 ? (cw.avg - p.goalWeight) / (daysLeft / 7) : null;
-    root.append(h('section', { class: 'block' },
-      h('h2', null, 'Goal ' + fmt(p.goalWeight, 1) + ' kg'),
+    root.append(h('section', { class: 'goal' },
+      h('div', { class: 'goal-top' },
+        h('b', null, fmt(cw.avg, 1) + ' → ' + fmt(p.goalWeight, 1) + ' kg'),
+        daysLeft != null ? h('span', null, daysLeft > 0 ? daysLeft + ' days left' : 'Due') : null),
       bar(prog, 1),
-      h('div', { class: 'stat-row' },
-        h('div', null, h('b', null, fmt(cw.avg, 1) + ' kg'), ' 7-day average'),
-        h('div', null, h('b', null, fmt(Math.abs(cw.avg - p.goalWeight), 1) + ' kg'), cw.avg > p.goalWeight ? ' to go' : ' past goal'),
-        daysLeft != null ? h('div', null, h('b', null, daysLeft > 0 ? daysLeft + ' days' : 'Due'), ' left') : null),
       h('p', { class: 'meta' },
-        (rate != null ? 'Recent pace ' + (rate <= 0 ? fmt(-rate, 2) + ' kg/week down' : fmt(rate, 2) + ' kg/week up') : 'Log your weight for a few days to see your pace') +
-        (need != null && need > 0 ? '. Needed: ' + fmt(need, 2) + ' kg/week.' : '.'))));
+        fmt(Math.abs(cw.avg - p.goalWeight), 1) + ' kg ' + (cw.avg > p.goalWeight ? 'to go' : 'past goal') +
+        (rate != null ? ' · ' + (rate <= 0 ? fmt(-rate, 2) + ' kg a week down' : fmt(rate, 2) + ' kg a week up') : '') +
+        (need != null && need > 0 ? ' · ' + fmt(need, 2) + ' a week needed' : ''))));
   }
 
-  // Running this week
-  if (day && p.program.days.some(x => x.exercises.some(e => e.type === 'run'))) {
-    const km = weekRunKm(rec, d);
-    root.append(h('section', { class: 'block' },
-      h('h2', null, 'Running this week'),
-      h('div', { class: 'stat-row' }, h('div', null, h('b', null, fmt(km, 1) + ' km'), p.runCap ? ' of ' + fmt(p.runCap, 1) : '')),
-      p.runCap ? bar(km, p.runCap) : null));
-  }
+  root.append(h('div', { class: 'home-acts' },
+    h('button', { class: 'btn primary', onclick: goFood }, 'Log food'),
+    h('button', { class: 'btn', onclick: day.exercises.length ? goLifts : openBody }, day.exercises.length ? (logged ? 'Continue session' : 'Start session') : 'Log body')));
 }
 
 /* ---------- Lifts ---------- */
 function persistLift(rec, date, day, ex, sets) {
-  const id = liftId(date, ex.name);
+  const found = liftOn(rec, date, ex.name);           // same exercise, any spelling
+  const id = found ? found.id : liftId(date, ex.name);
   const empty = sets.every(s => s.w == null && s.r == null);
-  if (empty) { if (rec.lifts[id] && !rec.lifts[id].del) del('lifts', id, rec); return; }
-  put('lifts', { id, date, ex: ex.name, type: ex.type, session: day.name, sets: sets.map(s => ({ w: s.w, r: s.r, d: !!s.d })) }, rec);
+  if (empty) { if (found) del('lifts', id, rec); return; }
+  put('lifts', { id, date, ex: found ? found.ex : ex.name, type: ex.type, session: day.name, sets: sets.map(s => ({ w: s.w, r: s.r, d: !!s.d })) }, rec);
 }
 
 function sessionSummary(rec, date, day) {
-  const names = new Set(day.exercises.map(e => e.name));
+  const names = new Set(day.exercises.map(e => exKey(e.name)));
   let sets = 0, vol = 0;
   for (const e of live('lifts', rec)) {
-    if (e.date !== date || (e.session !== day.name && !names.has(e.ex))) continue;
+    if (e.date !== date || (e.session !== day.name && !names.has(exKey(e.ex)))) continue;
     if (e.type !== 'weight') { if (e.sets.some(s => s.r != null)) sets++; continue; }
     for (const s of e.sets) if (s.r != null) { sets++; vol += (s.w || 0) * s.r; }
   }
@@ -175,8 +211,7 @@ function sessionSummary(rec, date, day) {
 }
 
 function exerciseCard(rec, date, day, ex, onSummary) {
-  const id = liftId(date, ex.name);
-  const saved = rec.lifts[id] && !rec.lifts[id].del ? rec.lifts[id] : null;
+  const saved = liftOn(rec, date, ex.name);
   const last = lastLift(rec, ex.name, date);
   const count = ex.type === 'weight' || ex.type === 'time' ? (ex.sets || 3) : 1;
   let sets = saved ? clone(saved.sets) : Array.from({ length: count }, () => ({ w: null, r: null, d: false }));
@@ -186,7 +221,8 @@ function exerciseCard(rec, date, day, ex, onSummary) {
   const flagEl = h('span', { class: 'tag', hidden: true }, 'New best');
   function flag() {
     let best = 0;
-    for (const e of live('lifts', rec)) if (e.ex === ex.name && e.date < date) for (const s of e.sets) if (s.w && s.r) best = Math.max(best, est1RM(s.w, s.r));
+    const k = exKey(ex.name);
+    for (const e of live('lifts', rec)) if (exKey(e.ex) === k && e.date < date) for (const s of e.sets) if (s.w && s.r) best = Math.max(best, est1RM(s.w, s.r));
     const now = Math.max(0, ...sets.filter(s => s.w && s.r).map(s => est1RM(s.w, s.r)));
     flagEl.hidden = !(ex.type === 'weight' && best > 0 && now > best * 1.001);
   }
@@ -222,14 +258,54 @@ function exerciseCard(rec, date, day, ex, onSummary) {
   return card;
 }
 
+/* Add an exercise, suggesting names already in use so history is not split by a
+   different spelling. Suggestions ignore case and a trailing "s". */
+function addExerciseSheet(rec, date, day) {
+  const known = new Map();
+  for (const d of rec.profile.program.days) for (const ex of d.exercises) if (!known.has(exKey(ex.name))) known.set(exKey(ex.name), { name: ex.name, note: d.name });
+  for (const e of exerciseNames(rec)) {
+    const prev = known.get(e.key);
+    const note = 'last ' + prettyDate(e.last);
+    if (prev) prev.note = note; else known.set(e.key, { name: e.name, note });
+  }
+  const loose = s => exKey(s).replace(/s\b/g, '').replace(/\s+/g, ' ').trim();
+  sheet('Add an exercise', (body, close) => {
+    const list = h('div', { class: 'list' });
+    const name = h('input', { class: 'in', placeholder: 'Exercise name', 'aria-label': 'Exercise name', autocapitalize: 'none', autocomplete: 'off' });
+    const add = n => {
+      const t = String(n).trim(); if (!t) return;
+      persistLift(rec, date, day, { name: t, type: 'weight' }, [{ w: null, r: 0, d: false }]);
+      close(); render();
+    };
+    const draw = () => {
+      const q = loose(name.value);
+      const hits = [...known.values()]
+        .filter(k => !q || loose(k.name).includes(q))
+        .slice(0, 8);
+      setKids(list, ...hits.map(k => h('button', { class: 'pick', type: 'button', onclick: () => add(k.name) },
+        h('b', null, k.name), h('small', null, k.note))));
+    };
+    name.addEventListener('input', draw);
+    body.append(h('label', { class: 'field' }, h('span', null, 'Name'), name),
+      h('p', { class: 'hint' }, 'Pick an existing name to keep its history. A new spelling starts a fresh history.'),
+      list,
+      h('button', { class: 'btn primary wide', onclick: () => add(name.value) }, 'Add'));
+    draw();
+    setTimeout(() => name.focus(), 50);
+  });
+}
+
 function viewLifts(root) {
   const rec = cur(), date = ui.date, days = rec.profile.program.days;
-  const dow = ui.sess[date] != null ? ui.sess[date] : dowOf(date);
-  const day = days.find(d => d.dow === dow) || programDay(rec, date);
+  const day = selectedDay(rec, date), dow = day.dow;
   root.append(pageHead('Lifts', null, syncBadge()), dateNav(render));
-  const sel = h('select', { class: 'in', 'aria-label': 'Session', onchange: e => { ui.sess[date] = Number(e.target.value); render(); } },
-    days.map(d => h('option', { value: String(d.dow), selected: d.dow === dow }, DAYS[d.dow] + ': ' + d.name)));
+  const opt = d => h('option', { value: String(d.dow), selected: d.dow === dow }, dayShort(d.dow) + ': ' + d.name);
+  const week = days.filter(d => !isExtra(d.dow)), extra = days.filter(d => isExtra(d.dow));
+  const sel = h('select', { class: 'in', 'aria-label': 'Session', onchange: e => { pickSession(date, Number(e.target.value)); render(); } },
+    week.map(opt),
+    extra.length ? h('optgroup', { label: 'Extra sessions (no gym)' }, extra.map(opt)) : null);
   root.append(h('label', { class: 'field' }, h('span', null, 'Session'), sel));
+  if (isExtra(dow)) root.append(h('p', { class: 'hint' }, 'Extra session. Today counts as a training day for calories. Rotate A, B, C, D in order.'));
 
   const summary = h('p', { class: 'summary' });
   const updateSummary = () => {
@@ -241,24 +317,13 @@ function viewLifts(root) {
   for (const ex of day.exercises) root.append(exerciseCard(rec, date, day, ex, updateSummary));
 
   // extras logged on this session that are not in the program
-  const names = new Set(day.exercises.map(e => e.name));
+  const names = new Set(day.exercises.map(e => exKey(e.name)));
   for (const e of live('lifts', rec)) {
-    if (e.date === date && e.session === day.name && !names.has(e.ex)) {
-      names.add(e.ex);
+    if (e.date === date && e.session === day.name && !names.has(exKey(e.ex))) {
+      names.add(exKey(e.ex));
       root.append(exerciseCard(rec, date, day, { name: e.ex, type: e.type || 'weight', group: 'upper', sets: e.sets.length, reps: '8-12' }, updateSummary));
     }
   }
-  root.append(h('button', { class: 'btn wide', onclick: () => {
-    sheet('Add an exercise', (body, close) => {
-      const name = h('input', { class: 'in', placeholder: 'Exercise name', 'aria-label': 'Exercise name' });
-      body.append(h('label', { class: 'field' }, h('span', null, 'Name'), name),
-        h('button', { class: 'btn primary wide', onclick: () => {
-          const n = name.value.trim(); if (!n) return;
-          persistLift(rec, date, day, { name: n, type: 'weight' }, [{ w: null, r: 0, d: false }]);
-          close(); render();
-        } }, 'Add'));
-      setTimeout(() => name.focus(), 50);
-    });
-  } }, 'Add an exercise'));
+  root.append(h('button', { class: 'btn wide', onclick: () => addExerciseSheet(rec, date, day) }, 'Add an exercise'));
   updateSummary();
 }

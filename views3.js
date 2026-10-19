@@ -196,7 +196,9 @@ function viewSettings(root) {
   root.append(h('section', { class: 'block' },
     h('h2', null, 'Training program'),
     h('p', { class: 'meta' }, 'Change exercises, sets and rep ranges for any day.'),
-    h('button', { class: 'btn', onclick: () => { location.hash = '#/program'; } }, 'Edit program')));
+    h('div', { class: 'btn-row wrap' },
+      h('button', { class: 'btn', onclick: () => { location.hash = '#/program'; } }, 'Edit program'),
+      h('button', { class: 'btn', onclick: () => { location.hash = '#/exnames'; } }, 'Exercise names'))));
 
   // sync
   const c = S.sync;
@@ -263,19 +265,75 @@ function pinSheet() {
   });
 }
 
+/* ---------- exercise names ---------- */
+function viewExNames(root) {
+  const rec = cur(), all = exerciseNames(rec);
+  root.append(pageHead('Exercise names', 'Merge or rename what you have logged'),
+    h('button', { class: 'link back', onclick: () => { location.hash = '#/settings'; } }, 'Back to More'));
+  if (!all.length) { root.append(h('p', { class: 'empty' }, 'Nothing logged yet.')); return; }
+  root.append(h('p', { class: 'hint' }, 'Case and spacing are already treated as the same exercise. Rename one to another name here to join two histories, for example "Leg extensions" into "Leg extension".'));
+  const loose = s => exKey(s).replace(/s\b/g, '').replace(/\s+/g, ' ').trim();
+  root.append(h('div', { class: 'list' }, all.map(e => {
+    const near = all.filter(o => o.key !== e.key && loose(o.name) === loose(e.name));
+    return h('button', { class: 'pick', onclick: () => renameSheet(rec, e, all) },
+      h('b', null, e.name, near.length ? h('span', { class: 'tag' }, 'possible duplicate') : null),
+      h('small', null, e.count + (e.count === 1 ? ' session' : ' sessions') + ', last ' + prettyDate(e.last) +
+        (e.spellings.size > 1 ? ' · ' + e.spellings.size + ' spellings joined' : '')));
+  })));
+}
+
+function renameSheet(rec, entry, all) {
+  const loose = s => exKey(s).replace(/s\b/g, '').replace(/\s+/g, ' ').trim();
+  sheet('Rename ' + entry.name, (body, close) => {
+    const inp = h('input', { class: 'in', value: entry.name, 'aria-label': 'New name', autocapitalize: 'none' });
+    const others = all.filter(o => o.key !== entry.key).sort((a, b) =>
+      (loose(a.name) === loose(entry.name) ? -1 : 0) - (loose(b.name) === loose(entry.name) ? -1 : 0));
+    const apply = to => {
+      const t = String(to).trim();
+      if (!t) { toast('Enter a name', 'bad'); return; }
+      if (exKey(t) === entry.key) { close(); return; }
+      const joining = all.some(o => o.key === exKey(t));
+      confirmSheet(joining
+        ? 'This moves ' + entry.count + ' logged ' + (entry.count === 1 ? 'session' : 'sessions') + ' into "' + t + '". The two histories become one and the charts join up.'
+        : 'This renames ' + entry.count + ' logged ' + (entry.count === 1 ? 'session' : 'sessions') + ' to "' + t + '".',
+        joining ? 'Join them' : 'Rename', () => {
+          const n = renameExercise(rec, entry.key, t);
+          toast(n ? 'Updated ' + n + (n === 1 ? ' session' : ' sessions') : 'Nothing changed');
+          close(); render();
+        });
+    };
+    body.append(h('label', { class: 'field' }, h('span', null, 'Name'), inp));
+    if (others.length) {
+      body.append(h('p', { class: 'list-h' }, 'Or join it into'));
+      body.append(h('div', { class: 'list' }, others.slice(0, 8).map(o =>
+        h('button', { class: 'pick', type: 'button', onclick: () => apply(o.name) },
+          h('b', null, o.name), h('small', null, o.count + (o.count === 1 ? ' session' : ' sessions') + ', last ' + prettyDate(o.last))))));
+    }
+    body.append(h('button', { class: 'btn primary wide', onclick: () => apply(inp.value) }, 'Save name'));
+  });
+}
+
 /* ---------- program editor ---------- */
 function viewProgramList(root) {
   const rec = cur(), prog = rec.profile.program;
   root.append(pageHead('Program', prog.name), h('button', { class: 'link back', onclick: () => { location.hash = '#/settings'; } }, 'Back to More'));
-  root.append(h('div', { class: 'list' }, prog.days.map(d => h('button', { class: 'pick', onclick: () => { location.hash = '#/program/' + d.dow; } },
-    h('b', null, DAYS_LONG[d.dow] + ': ' + d.name), h('small', null, d.exercises.length ? d.exercises.length + ' exercises, ' + (d.kind === 'gym' ? 'training day calories' : 'light day calories') : 'Rest day, light day calories')))));
+  const row = d => h('button', { class: 'pick', onclick: () => { location.hash = '#/program/' + d.dow; } },
+    h('b', null, (isExtra(d.dow) ? '' : DAYS_LONG[d.dow] + ': ') + d.name),
+    h('small', null, d.exercises.length ? d.exercises.length + ' exercises, ' + (d.kind === 'gym' ? 'training day calories' : 'light day calories') : 'Rest day, light day calories'));
+  const week = prog.days.filter(d => !isExtra(d.dow)), extra = prog.days.filter(d => isExtra(d.dow));
+  root.append(h('div', { class: 'list' }, week.map(row)));
+  if (extra.length) root.append(h('h2', null, 'Extra sessions'),
+    h('p', { class: 'hint' }, 'These belong to no weekday. Pick one from the Session list on the Lifts screen, for trips with no gym.'),
+    h('div', { class: 'list' }, extra.map(row)));
+  else root.append(h('button', { class: 'btn wide', onclick: () => { const n = addFieldSessions(); toast(n ? 'Added ' + n + ' field sessions' : 'Already there'); render(); } }, 'Add the field sessions (bands and bodyweight)'));
   root.append(h('button', { class: 'btn danger wide', onclick: () => confirmSheet('This replaces your whole program with the original 5-day split. Your logged history is kept.', 'Reset program', () => { saveProfile({ program: clone(DEFAULT_PROGRAM) }); render(); }, true) }, 'Reset to the original program'));
 }
 
 function viewProgramDay(root, dow) {
   const rec = cur();
   const day = clone(rec.profile.program.days.find(d => d.dow === dow));
-  root.append(pageHead(DAYS_LONG[dow], 'Edit this day'), h('button', { class: 'link back', onclick: () => { location.hash = '#/program'; } }, 'Back to program'));
+  if (!day) { root.append(h('p', { class: 'empty' }, 'That session is not in your program.'), h('button', { class: 'link back', onclick: () => { location.hash = '#/program'; } }, 'Back to program')); return; }
+  root.append(pageHead(isExtra(dow) ? day.name : DAYS_LONG[dow], 'Edit this session'), h('button', { class: 'link back', onclick: () => { location.hash = '#/program'; } }, 'Back to program'));
   const name = h('input', { class: 'in', value: day.name, 'aria-label': 'Session name', oninput: e => { day.name = e.target.value; } });
   const kind = h('select', { class: 'in', 'aria-label': 'Day type', onchange: e => { day.kind = e.target.value; }, value: day.kind },
     h('option', { value: 'gym' }, 'Training day (higher calories)'), h('option', { value: 'light' }, 'Light or rest day'));
@@ -301,7 +359,7 @@ function viewProgramDay(root, dow) {
   root.append(box,
     h('button', { class: 'btn wide', onclick: () => { day.exercises.push({ name: 'New exercise', type: 'weight', group: 'upper', sets: 3, reps: '8-12' }); draw(); } }, 'Add an exercise'),
     h('button', { class: 'btn primary wide', onclick: () => {
-      day.name = day.name.trim() || DAYS_LONG[dow];
+      day.name = day.name.trim() || dayLong(dow);
       day.exercises = day.exercises.filter(e => e.name.trim());
       const prog = clone(rec.profile.program);
       prog.days = prog.days.map(d => d.dow === dow ? day : d);

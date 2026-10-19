@@ -224,20 +224,28 @@ function viewProgress(root) {
 
   // Lifts
   const lsec = h('section', { class: 'block' }, h('h2', null, 'Lift progress'));
-  const exs = [...new Set(live('lifts', rec).filter(e => e.type === 'weight' && e.sets.some(s => s.w && s.r)).map(e => e.ex))].sort();
+  // Grouped on the loose key, so a different spelling does not split the chart.
+  const exMap = new Map();
+  for (const e of live('lifts', rec)) {
+    if (e.type !== 'weight' || !e.sets.some(s => s.w && s.r)) continue;
+    const k = exKey(e.ex), cur = exMap.get(k);
+    if (!cur || e.date > cur.date) exMap.set(k, { key: k, name: e.ex, date: e.date });
+  }
+  const exs = [...exMap.values()].sort((a, b) => a.name.localeCompare(b.name));
   if (exs.length) {
-    if (!ui.progEx || !exs.includes(ui.progEx)) ui.progEx = exs[0];
+    if (!ui.progEx || !exs.some(x => x.key === ui.progEx)) ui.progEx = exs[0].key;
     const chartBox = h('div');
     const draw = () => {
-      const es = live('lifts', rec).filter(e => e.ex === ui.progEx).sort((a, b) => a.date.localeCompare(b.date));
+      const sel = exMap.get(ui.progEx) || exs[0];
+      const es = live('lifts', rec).filter(e => exKey(e.ex) === sel.key).sort((a, b) => a.date.localeCompare(b.date));
       const pts = es.map(e => [e, Math.max(0, ...e.sets.filter(s => s.r).map(s => s.w || 0))]).filter(x => x[1] > 0);
       const f0 = pts.length ? pts[0][0].date : today();
       let bestE = null; for (const e of es) for (const s of e.sets) if (s.w && s.r && (!bestE || est1RM(s.w, s.r) > est1RM(bestE.s.w, bestE.s.r))) bestE = { s, e };
       setKids(chartBox,
-        pts.length ? lineChart({ label: ui.progEx + ' top weight', series: [{ pts: pts.map(x => [diffDays(x[0].date, f0), x[1]]), cls: 'main', dots: true }], xTicks: [{ x: 0, label: shortDate(f0) }, { x: diffDays(pts[pts.length - 1][0].date, f0), label: shortDate(pts[pts.length - 1][0].date) }] }) : null,
+        pts.length ? lineChart({ label: sel.name + ' top weight', series: [{ pts: pts.map(x => [diffDays(x[0].date, f0), x[1]]), cls: 'main', dots: true }], xTicks: [{ x: 0, label: shortDate(f0) }, { x: diffDays(pts[pts.length - 1][0].date, f0), label: shortDate(pts[pts.length - 1][0].date) }] }) : null,
         bestE ? h('p', { class: 'meta' }, 'Best set: ' + fmt(bestE.s.w, bestE.s.w % 1 ? 1 : 0) + ' kg × ' + bestE.s.r + ' on ' + shortDate(bestE.e.date) + '. Chart shows your heaviest set each session.') : null);
     };
-    lsec.append(h('label', { class: 'field' }, h('span', null, 'Exercise'), h('select', { class: 'in', onchange: e => { ui.progEx = e.target.value; draw(); } }, exs.map(n => h('option', { value: n, selected: n === ui.progEx }, n)))), chartBox);
+    lsec.append(h('label', { class: 'field' }, h('span', null, 'Exercise'), h('select', { class: 'in', onchange: e => { ui.progEx = e.target.value; draw(); } }, exs.map(x => h('option', { value: x.key, selected: x.key === ui.progEx }, x.name)))), chartBox);
     draw();
   } else lsec.append(h('p', { class: 'empty' }, 'Log a few sessions with weights and your strength trend will show here.'));
   root.append(lsec);
